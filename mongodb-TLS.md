@@ -87,7 +87,6 @@ We will create our own custom openssl.cnf to add extensions to the Certificate S
 [req]
 # Used by the req command
 default_bits            = 2048
-default_keyfile         = privkey.pem
 distinguished_name      = dn
 prompt                  = no
 req_extensions          = v3_req
@@ -129,6 +128,13 @@ Requested Extensions:
 
 $ openssl x509 -req -in mongo-server.csr -out mongodb.crt -CA ../mongo-rootCA/rootCA.pem -CAkey ../mongo-rootCA/rootCA.key -extfile server-csr-mongodb.conf -extensions v3_req -CAcreateserial -days 1000 -sha256
 
+
+or
+
+
+ openssl x509 -req -in mongo-server.csr -out mongodb.crt -CA ../mongo-rootCA/rootCA.pem -CAkey ../mongo-rootCA/rootCA.key server-csr-mongodb.conf -CAcreateserial -days 1000 -sha256  -copy_extensions copyall 
+
+
 Verify :
 $ openssl x509 -text -noout -in mongodb.crt
 
@@ -165,7 +171,7 @@ openssl genrsa -out mongo-client.key 2048
 $ sudo openssl req -new -key mongo-client.key  -out mongo-user.csr -config mongo-client-ssl-conf.conf
 
 
-$ sudo openssl x509 -req -CA ../mongo-rootCA/rootCA.pem -CAkey ../mongo-rootCA/rootCA.key -CAcreateserial  -days 1000 -in  mongo-user.csr -out mongo-user.crt -sha256 -extfile mongo-client-ssl-conf.conf -extensions extensions
+$ sudo openssl x509 -req -CA ../mongo-rootCA/rootCA.pem -CAkey ../mongo-rootCA/rootCA.key -CAcreateserial  -days 1000 -in  mongo-user.csr -out mongo-client.crt -sha256 -extfile mongo-client-ssl-conf.conf -extensions extensions
 
 
 Verify: 
@@ -178,6 +184,11 @@ X509v3 extensions:
             X509v3 Extended Key Usage:
                 TLS Web Client Authentication
 
+
+
+Verify coonection to mongodb
+
+$ mongosh --tls --host localhost --tlsCertificateKeyFile mongo-client.pem --tlsCAFile ../mongo-rootCA/rootCA.pem
 
 
 
@@ -194,6 +205,52 @@ subject=emailAddress=emailaddress@myemail.com,CN=mycommname.com,OU=MyOrgUnit,O=M
 
 
 
+Create user
+
+db.getSiblingDB("$external").runCommand(
+  {
+    createUser: "CN=mongo-client-01,emailAddress=mongo-client@mail.com,OU=MongoDB Client,O=MongoDB,L=Linz,ST=Linz,C=AT",
+    roles: [
+         { role: "readWrite", db: "test" },
+         { role: "userAdminAnyDatabase", db: "admin" }
+    ],
+    writeConcern: { w: "majority" , wtimeout: 5000 }
+  }
+)
+
+
+
+Authenticate:
+
+mongosh --tls --host localhost --tlsCertificateKeyFile mongo-client.pem --tlsCAFile ../mongo-rootCA/rootCA.pem --authenticationDatabase '$external' --authenticationMechanism MONGODB-X509
+
+
+After connection:
+
+db.getSiblingDB("$external").auth(
+  {
+    mechanism: "MONGODB-X509"
+  }
+)
+
+
+> [!TIP]
+> Urgent info that needs immediate user attention to avoid problems.
+
+Appendix
+
+- Install the ca-certificates package. `sudo apt-get install -y ca-certificates`
+- Copy the CA.pem file to the /usr/local/share/ca-certificates directory. `sudo cp CA.pem /usr/local/share/ca-certificates/CA.crt`
+- Update the certificate store. `sudo update-ca-certificates`
+
+
+
+
+mongosh --tls --host iss-dev.us --port 27020 --tlsCertificateKeyFile ~/mongo-ssl-client/mongo-user.pem --tlsUseSystemCA
+
+
+
+
 
 END:
 MongoServerSelectionError: Hostname/IP does not match certificate's altnames: Host: localhost. is not cert's CN: iss-dev.xyz
@@ -201,3 +258,6 @@ MongoServerSelectionError: Hostname/IP does not match certificate's altnames: Ho
 https://www.golinuxcloud.com/add-x509-extensions-to-certificate-openssl/
 
 https://github.com/openssl/openssl/blob/baba1545105131fa34068f62928322e99d695ab1/apps/openssl.cnf#L219
+
+
+https://jamielinux.com/docs/openssl-certificate-authority/index.html
