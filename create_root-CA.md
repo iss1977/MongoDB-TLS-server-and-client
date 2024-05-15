@@ -1,20 +1,22 @@
-# Creating _Root certificate authority_ and _intermediate CA_
+# Creating __Root certificate authority__ 
 
 A certificate authority (CA) is an entity that signs digital certificates
 
 Typically, the root CA does not sign server or client certificates directly. The root CA is only ever used to create one or more intermediate CAs, which are trusted by the root CA to sign certificates on their behalf. This is best practice. It allows the root key to be kept offline and unused as much as possible, as any compromise of the root key is disastrous.
 
-### 1. Choose a directory (`/root/ca`) to store all keys and certificates.
+### 1. Choose a directory (`/root/ca/root-CA`) to store all keys and certificates.
+
+Switch to root using `sudo su`. Create directory structure and additionally needed files.
 
 ```bash
-
-mkdir /root/ca
-cd /root/ca
-mkdir certs crl newcerts private
+mkdir -p /root/ca/root-CA
+cd /root/ca/root-CA
+mkdir certs crl newcerts private csr
 chmod 700 private
 # The index.txt and serial files act as a flat file database to keep track of signed certificates
-touch index.txt
+touch index
 openssl rand -hex 16 > serial # Generate a 16 char long random hexadecimal number
+openssl rand -hex 16 > crlnumber
 ```
 
 
@@ -30,9 +32,9 @@ openssl rand -hex 16 > serial # Generate a 16 char long random hexadecimal numbe
 
 ### 2. Prepare the configuration file
 
-create a configuration file for OpenSSL to use `/root/ca/root-CA-openssl.conf`
+Create a configuration file for OpenSSL to use `/root/ca/root-CA/root-CA-openssl.conf`
 
-he [ ca ] section is mandatory. Here we tell OpenSSL to use the options from the [ CA_default ] section.
+The [ ca ] section is mandatory. Here we tell OpenSSL to use the options from the [ CA_default ] section.
 
 ```conf
 [ ca ]
@@ -41,13 +43,12 @@ default_ca = CA_default
 
 [ CA_default ]
 # Directory and file locations.
-dir               = /root/ca
+dir               = /root/ca/root-CA
 certs             = $dir/certs
 crl_dir           = $dir/crl
 new_certs_dir     = $dir/newcerts
 database          = $dir/index.txt
 serial            = $dir/serial
-RANDFILE          = $dir/private/.rand
 
 # The root key and root certificate.
 private_key       = $dir/private/ca.key.pem
@@ -73,26 +74,10 @@ We’ll apply `policy_strict` for all root CA signatures, as the root CA is only
 
 ```bash
 [ policy_strict ]
-# The root CA should only sign intermediate certificates that match.
-# See the POLICY FORMAT section of `man ca`.
+# The root CA should only sign intermediate certificates that match of the field in the CA's DN.
 countryName             = match
 stateOrProvinceName     = match
 organizationName        = match
-organizationalUnitName  = optional
-commonName              = supplied
-emailAddress            = optional
-```
-
-We’ll apply `policy_loose` for all intermediate CA signatures, as the intermediate CA is signing server and client certificates that may come from a variety of third-parties.
-
-```bash
-[ policy_loose ]
-# Allow the intermediate CA to sign a more diverse range of certificates.
-# See the POLICY FORMAT section of the `ca` man page.
-countryName             = optional
-stateOrProvinceName     = optional
-localityName            = optional
-organizationName        = optional
 organizationalUnitName  = optional
 commonName              = supplied
 emailAddress            = optional
@@ -148,50 +133,10 @@ keyUsage = critical, digitalSignature, cRLSign, keyCertSign
 ```
 <br/>
 
-`v3_ca_intermediate` extension will be applied when we create the intermediate certificate. `pathlen:0` ensures that there can be no further certificate authorities below the intermediate CA.
-```conf
-[ v3_intermediate_ca ]
-# Extensions for a typical intermediate CA (`man x509v3_config`).
-subjectKeyIdentifier = hash
-authorityKeyIdentifier = keyid:always,issuer
-basicConstraints = critical, CA:true, pathlen:0
-keyUsage = critical, digitalSignature, cRLSign, keyCertSign
-```
-<br/>
-
-We’ll apply the `usr_cert` extension when signing __client certificates__, such as those used for remote user authentication.
-```conf
-[ usr_cert ]
-# Extensions for client certificates (`man x509v3_config`).
-basicConstraints = CA:FALSE
-nsCertType = client, email
-nsComment = "OpenSSL Generated Client Certificate"
-subjectKeyIdentifier = hash
-authorityKeyIdentifier = keyid,issuer
-keyUsage = critical, nonRepudiation, digitalSignature, keyEncipherment
-extendedKeyUsage = clientAuth, emailProtection
-```
-
-<br/>
-
-We’ll apply the `server_cert` extension when signing server certificates, such as those used for web servers.
-
-```conf
-[ server_cert ]
-# Extensions for server certificates (`man x509v3_config`).
-basicConstraints = CA:FALSE
-nsCertType = server
-nsComment = "OpenSSL Generated Server Certificate"
-subjectKeyIdentifier = hash
-authorityKeyIdentifier = keyid,issuer:always
-keyUsage = critical, digitalSignature, keyEncipherment
-extendedKeyUsage = serverAuth
-```
-
 ### 3. Create the root key
 ```bash
-cd /root/ca
-openssl genrsa -aes256 -out private/ca.key.pem 4096
+cd /root/ca/root-CA
+openssl genrsa -out private/ca.key.pem 4096 # add "-aes256" option to protect your key with a password
 chmod 400 private/ca.key.pem
 
 # Result: 
@@ -204,7 +149,7 @@ chmod 400 private/ca.key.pem
 Create a certificate for 7300 days using provided openssl.cnf using the `v3_ca` extensions:
 
 ```bash
-cd /root/ca
+cd /root/ca/root-CA
 openssl req -config root-CA-openssl.conf \
       -key private/ca.key.pem \
       -new -x509 -days 7300 -sha256 -extensions v3_ca \
@@ -254,5 +199,5 @@ Certificate:
 
 ```
 
-https://jamielinux.com/docs/openssl-certificate-authority/index.html
+
 
