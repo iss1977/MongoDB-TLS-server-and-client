@@ -29,7 +29,7 @@ The Mongo clients will check if the host name ( or IP ) from the connection stri
 Create the [`server-certificate-csr.conf` ](./server-certificate-csr.conf) file inside the `/root/ca/server-certs` folder. Modify the `[alt_names]` according to your needs. This section will be the `subjectAltName` extension in the server certificate.
 
 > [!NOTE]  
-> As default, the CA will not add the extensions to the certificate unless `copy_extensions = copy` is added to the `intermediate-CA-openssl.conf` configuration file
+> As default, the CA will not add the extensions to the certificate from the certificate request  unless `copy_extensions = copy` is added to the `intermediate-CA-openssl.conf` configuration file
 
 
 Use the private key to create a certificate signing request (CSR):
@@ -52,7 +52,7 @@ openssl req -in server-certs/mongo-server.csr -noout -text
 Certificate Request:
     Data:
         Version: 1 (0x0)
-        Subject: C = AT, ST = Austria, O = Your-Company, OU = MongoDB, CN = MongoDB-server
+        Subject: C = AT, ST = Austria, O = Your-Company, OU = MongoDB, CN = MongoDB-server, DC = Mongo-Server
         Subject Public Key Info:
             Public Key Algorithm: rsaEncryption
                 Public-Key: (2048 bit)
@@ -69,27 +69,16 @@ Certificate Request:
 
 #### 2.3 Sign the server certificate
 
-To create a certificate, use the intermediate CA to sign the CSR. If the certificate is going to be used on a server, use the `server_cert` extension. If the certificate is going to be used for user authentication, we will use the `usr_cert` extension.
+To create a certificate, use the intermediate CA to sign the CSR. The extensions will be copied from the certificate request, using the `copy_extensions = copy` option in the intermediate CA configuration file.
 
+> [!NOTE]  
+> One of the `O`, `OU` and `DC` fields must be different in the  server and client certificates.
 
-We’ll apply the `server_cert` extension from the `intermediate-CA-openssl.conf` file when signing the mongo server certificates, such as those used for web servers.
-
-```conf
-[ server_cert ]
-# Extensions for server certificates (`man x509v3_config`).
-basicConstraints = CA:FALSE
-nsCertType = server
-nsComment = "OpenSSL Generated Server Certificate"
-subjectKeyIdentifier = hash
-authorityKeyIdentifier = keyid,issuer:always
-keyUsage = critical, digitalSignature, keyEncipherment
-extendedKeyUsage = serverAuth
-```
 
 ```bash
 cd /root/ca
 openssl ca -config intermediate-CA/intermediate-CA-openssl.conf \
-      -extensions server_cert -days 375 -notext -md sha256 \
+      -days 375 -notext -md sha256 \
       -in server-certs/mongo-server.csr \
       -out server-certs/mongo-server.crt
 
@@ -128,7 +117,6 @@ Client certificates must contain the following fields:
 keyUsage = digitalSignature
 extendedKeyUsage = clientAuth
 ```
-This will be stored in the `[ usr_cert ]` section of the `intermediate-CA-openssl.conf` file.
 
 At least one of the following client certificate attributes __must be different__ than the attributes of the server certificates:
 ```conf
@@ -153,7 +141,7 @@ openssl req -in client-certs/mongo-client.csr -noout -text
 Certificate Request:
     Data:
         Version: 1 (0x0)
-        Subject: C = AT, ST = Austria, O = Your-Company, OU = MongoDB, CN = MongoDB-server
+        Subject: C = AT, ST = Austria, O = Your-Company, OU = MongoDB,  DC = Mongo-Client, CN = MongoDB-server
         Subject Public Key Info:
             Public Key Algorithm: rsaEncryption
                 Public-Key: (2048 bit)
@@ -170,26 +158,13 @@ Certificate Request:
 
 #### 2.3 Sign the server certificate
 
-To create a certificate, use the intermediate CA to sign the CSR. If the certificate is going to be used on a server, use the `server_cert` extension. If the certificate is going to be used for user authentication, use the `usr_cert` extension.
-
-We’ll apply the `usr_cert` extension when signing __client certificates__  from the `intermediate-CA-openssl.conf` file.
-```conf
-[ usr_cert ]
-# Extensions for client certificates (`man x509v3_config`).
-basicConstraints = CA:FALSE
-nsCertType = client, email
-nsComment = "OpenSSL Generated Client Certificate"
-subjectKeyIdentifier = hash
-authorityKeyIdentifier = keyid,issuer
-keyUsage = critical, nonRepudiation, digitalSignature, keyEncipherment
-extendedKeyUsage = clientAuth, emailProtection
-```
-
+To create a certificate, use the intermediate CA to sign the CSR. 
+The extensions will be copied from the certificate request, using the `copy_extensions = copy` option in the intermediate CA configuration file.
 
 ```bash
 cd /root/ca
 openssl ca -config intermediate-CA/intermediate-CA-openssl.conf \
-      -extensions usr_cert -days 375 -notext -md sha256\
+      -days 375 -notext -md sha256\
       -in client-certs/mongo-client.csr -out client-certs/mongo-client.crt
 
 chmod 444 client-certs/mongo-client.crt
