@@ -261,31 +261,10 @@ db.getUsers({
 
 ```
 
+Related informations:
 
-
-
-Add 
-
-security:
-    authorization: enabled
-
-to mongo.conf
-
-
-Authenticate:
-
-mongosh --port 27017  --authenticationDatabase \
-    "admin" -u "myUserAdmin" -p
-
-or in mongosh
-
-use admin
-db.auth("myUserAdmin", passwordPrompt()) // or cleartext password
-
-
-
-
-https://www.prisma.io/dataguide/mongodb
+https://rajanmaharjan.medium.com/secure-your-mongodb-connections-ssl-tls-92e2addb3c89
+<br/>
 https://jamielinux.com/docs/openssl-certificate-authority/index.html
 
 
